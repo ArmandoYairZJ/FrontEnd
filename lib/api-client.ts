@@ -37,6 +37,14 @@ export interface Product {
   marca: string
 }
 
+export interface User {
+  id: string
+  email: string
+  username: string
+  rol?: "ADMIN" | "USER"
+  password?: string
+}
+
 class ApiClient {
   private baseURL: string
 
@@ -223,6 +231,89 @@ class ApiClient {
     }
   }
 
+  async checkEmailExists(email: string): Promise<ApiResponse<{ exists: boolean }>> {
+    if (!this.baseURL) {
+      return { error: "API_BASE_URL no está configurada" }
+    }
+
+    try {
+      const encodedEmail = encodeURIComponent(email)
+      const url = `${this.baseURL}/auth/email/${encodedEmail}`
+      
+      console.log(`[API] Checking if email exists: ${url}`)
+      
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      console.log(`[API] Email check response:`, {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      })
+
+      if (!response.ok && response.status !== 404) {
+        // Error del servidor (no 404)
+        const errorText = await response.text().catch(() => "")
+        console.error(`[API] Error checking email (${response.status}):`, errorText)
+        return { error: `Error ${response.status}: ${response.statusText}` }
+      }
+
+      // Intentar parsear la respuesta como JSON
+      let data: any
+      try {
+        const text = await response.text()
+        data = text ? JSON.parse(text) : null
+      } catch (parseError) {
+        // Si no es JSON, puede ser un booleano directo o texto
+        const text = await response.text()
+        if (text === "true" || text === "false") {
+          data = text === "true"
+        } else {
+          data = null
+        }
+      }
+
+      console.log(`[API] Email check data:`, data)
+
+      // El endpoint puede retornar:
+      // - true/false directamente
+      // - { exists: true/false }
+      // - status 200 = existe, 404 = no existe
+      let exists = false
+
+      if (response.status === 200) {
+        if (typeof data === "boolean") {
+          exists = data
+        } else if (data && typeof data === "object") {
+          exists = data.exists === true || data === true
+        } else {
+          exists = true // Si hay respuesta 200, asumimos que existe
+        }
+      } else if (response.status === 404) {
+        exists = false
+      } else {
+        // Otro caso, intentar interpretar la respuesta
+        if (typeof data === "boolean") {
+          exists = data
+        } else if (data && typeof data === "object" && "exists" in data) {
+          exists = data.exists === true
+        }
+      }
+
+      console.log(`[API] Email exists: ${exists}`)
+      return { data: { exists } }
+    } catch (error) {
+      console.error("Error checking email:", error)
+      return {
+        error: error instanceof Error ? error.message : "Error al verificar el email",
+      }
+    }
+  }
+
   async register(email: string, username: string, password: string): Promise<ApiResponse<LoginResponse>> {
     const result = await this.request<LoginResponse>("/auth/", {
       method: "POST",
@@ -396,6 +487,83 @@ class ApiClient {
       fullUrl: `${this.baseURL}${endpoint}`,
       product_id: id,
       user_id: userIdValue || "(vacío)",
+      description: descriptionValue || "(vacío)"
+    })
+    
+    return this.request<void>(endpoint, {
+      method: "DELETE",
+    })
+  }
+
+  // Usuarios
+  async createUser(user: { email: string; username: string; password: string; rol?: "ADMIN" | "USER" }): Promise<ApiResponse<User>> {
+    const userData: any = {
+      email: user.email,
+      username: user.username,
+      password: user.password,
+    }
+    
+    if (user.rol) {
+      userData.rol = user.rol
+    }
+    
+    return this.request<User>("/auth/", {
+      method: "POST",
+      body: JSON.stringify(userData),
+    })
+  }
+
+  async getUsers(): Promise<ApiResponse<User[]>> {
+    return this.request<User[]>("/domains/usuarios/users", {
+      method: "GET",
+    })
+  }
+
+  async getUser(id: string): Promise<ApiResponse<User>> {
+    return this.request<User>(`/domains/usuarios/users/${id}`, {
+      method: "GET",
+    })
+  }
+
+  async updateUser(id: string, user: Partial<{ username: string; email: string; rol: "ADMIN" | "USER"; password: string }>): Promise<ApiResponse<User>> {
+    // El backend requiere todos los campos siempre, incluso si están vacíos
+    const updateData: any = {
+      username: user.username !== undefined ? user.username : "",
+      email: user.email !== undefined ? user.email : "",
+      rol: user.rol !== undefined ? user.rol : "USER",
+      password: user.password !== undefined ? user.password : "",
+    }
+    
+    const endpoint = `/domains/usuarios/users/${id}`
+    
+    console.log(`[API] PUT request (user):`, {
+      endpoint: endpoint,
+      fullUrl: `${this.baseURL}${endpoint}`,
+      user_id: id,
+      body: updateData
+    })
+    
+    return this.request<User>(endpoint, {
+      method: "PUT",
+      body: JSON.stringify(updateData),
+    })
+  }
+
+  async deleteUser(id: string, userId?: string, description?: string): Promise<ApiResponse<void>> {
+    const params = new URLSearchParams()
+    const userIdValue = userId !== undefined ? userId : ""
+    params.append("user_id", userIdValue)
+    const descriptionValue = description !== undefined ? description : ""
+    params.append("description", descriptionValue)
+    
+    const queryString = params.toString()
+    const endpoint = `/domains/usuarios/users/${id}?${queryString}`
+    
+    console.log(`[API] DELETE request (user):`, {
+      endpoint: endpoint,
+      fullUrl: `${this.baseURL}${endpoint}`,
+      user_id: id,
+      user_id_param: userIdValue || "(vacío)",
       description: descriptionValue || "(vacío)"
     })
     

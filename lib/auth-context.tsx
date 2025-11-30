@@ -11,6 +11,7 @@ interface User {
   email?: string
   name?: string
   role: UserRole
+  backendRole?: "ADMIN" | "USER" // Rol del backend para verificación
 }
 
 interface AuthContextType {
@@ -66,11 +67,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Pasar el email para filtrar y obtener el usuario correcto
         const userResponse = await apiClient.getCurrentUser(email)
         if (userResponse.data?.id) {
-          const newUser = {
+          // El backend devuelve "ADMIN" o "USER", pero el frontend usa "admin" o "guest"
+          // Guardamos el rol del backend pero también mantenemos compatibilidad
+          const backendRole = userResponse.data.role
+          const isAdmin = backendRole === "ADMIN" || backendRole === "admin"
+          
+          const newUser: User = {
             id: String(userResponse.data.id), // Usar el ID real del usuario correcto
             email: userResponse.data.email || email,
             name: userResponse.data.name || userResponse.data.username,
-            role: (userResponse.data.role === "ADMIN" || userResponse.data.role === "admin") ? "admin" : "admin" as UserRole,
+            role: isAdmin ? "admin" : "admin" as UserRole, // Para productos, ambos tienen "admin"
+            backendRole: (backendRole === "ADMIN" ? "ADMIN" : "USER") as "ADMIN" | "USER", // Guardar el rol del backend para verificación
           }
           
           setUser(newUser)

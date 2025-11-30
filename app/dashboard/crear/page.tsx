@@ -1,12 +1,13 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { apiClient } from "@/lib/api-client"
+import { useAuth } from "@/lib/auth-context"
 
 interface ProductForm {
   nombre: string
@@ -17,6 +18,7 @@ interface ProductForm {
 
 export default function CrearProductos() {
   const router = useRouter()
+  const { user } = useAuth()
   const [formData, setFormData] = useState<ProductForm>({
     nombre: "",
     precio: "",
@@ -25,6 +27,7 @@ export default function CrearProductos() {
   })
   const [isLoading, setIsLoading] = useState(false)
   const [successMessage, setSuccessMessage] = useState("")
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -85,6 +88,18 @@ export default function CrearProductos() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  // Solo USER y ADMIN pueden crear (no invitados)
+  const isGuest = user?.role === "guest"
+  useEffect(() => {
+    if (isGuest) {
+      router.push("/dashboard/consultar")
+    }
+  }, [isGuest, router])
+
+  if (isGuest) {
+    return null
   }
 
   return (

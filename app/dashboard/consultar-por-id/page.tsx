@@ -11,6 +11,7 @@ export default function ConsultarPorId() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+
   const handleSearch = async () => {
     if (!productId.trim()) {
       setError("Por favor ingresa un ID de producto")

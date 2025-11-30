@@ -18,6 +18,14 @@ export default function ActualizarProductos() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Solo USER y ADMIN pueden actualizar (no invitados)
+  const isGuest = user?.role === "guest"
+  useEffect(() => {
+    if (isGuest) {
+      router.push("/dashboard/consultar")
+    }
+  }, [isGuest, router])
+
   useEffect(() => {
     const loadProducts = async () => {
       try {
@@ -38,6 +46,10 @@ export default function ActualizarProductos() {
 
     loadProducts()
   }, [])
+
+  if (isGuest) {
+    return null
+  }
 
   const startEdit = (product: Product) => {
     setEditingId(product.id)

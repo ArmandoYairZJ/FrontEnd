@@ -1,11 +1,12 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { useAuth } from "@/lib/auth-context"
+import { apiClient } from "@/lib/api-client"
 
 export default function LoginPage() {
   const [activeTab, setActiveTab] = useState<"login" | "register" | "guest">("login")
@@ -126,22 +127,114 @@ function RegisterForm() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [emailError, setEmailError] = useState("")
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false)
+
+  // Validar email en tiempo real
+  useEffect(() => {
+    const checkEmail = async () => {
+      if (!email.trim()) {
+        setEmailError("")
+        return
+      }
+
+      // Validar formato de email
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(email)) {
+        setEmailError("Por favor ingresa un email válido")
+        return
+      }
+
+      // Debounce: esperar 500ms después de que el usuario deje de escribir
+      const timeoutId = setTimeout(async () => {
+        setIsCheckingEmail(true)
+        setEmailError("")
+        
+        try {
+          const response = await apiClient.checkEmailExists(email)
+          
+          // Solo mostramos error si confirmamos que el email existe
+          if (response.data?.exists === true) {
+            setEmailError("Este correo electrónico ya está en uso")
+          } else {
+            // Si hay error o no existe, no mostramos error
+            // Permitimos que el usuario intente registrar
+            // El backend validará al final
+            setEmailError("")
+          }
+        } catch (err) {
+          console.error("Error al verificar email:", err)
+          // Si hay error, no bloqueamos - el backend validará
+          setEmailError("")
+        } finally {
+          setIsCheckingEmail(false)
+        }
+      }, 500)
+
+      return () => clearTimeout(timeoutId)
+    }
+
+    checkEmail()
+  }, [email])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setEmailError("")
     
+    // Validar campos básicos
     if (password !== confirmPassword) {
       setError("Las contraseñas no coinciden")
       return
     }
-    
+
+    // Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      setError("Por favor ingresa un email válido")
+      return
+    }
+
     setIsLoading(true)
     try {
+      // VALIDACIÓN OBLIGATORIA: Verificar si el email existe antes de enviar
+      console.log("[Register] Validando email antes de registrar...")
+      const emailCheck = await apiClient.checkEmailExists(email)
+      
+      if (emailCheck.error) {
+        // Si hay error al verificar, permitimos continuar (el backend validará)
+        console.warn("[Register] Error al verificar email, continuando:", emailCheck.error)
+      } else if (emailCheck.data?.exists === true) {
+        // El email existe, bloquear el registro
+        const errorMsg = "Este correo electrónico ya está en uso"
+        setError(errorMsg)
+        setEmailError(errorMsg)
+        setIsLoading(false)
+        return
+      } else if (emailCheck.data?.exists === false) {
+        // El email no existe, continuar con el registro
+        console.log("[Register] Email disponible, procediendo con el registro...")
+      } else {
+        // Respuesta inesperada, permitir continuar (el backend validará)
+        console.warn("[Register] Respuesta inesperada del endpoint de validación, continuando...")
+      }
+
+      // Si llegamos aquí, el email no existe o no pudimos verificar
+      // Proceder con el registro
       await register(email, username, password)
       router.push("/dashboard")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al registrar usuario")
+      // Si el error es por email duplicado, mostrarlo claramente
+      const errorMessage = err instanceof Error ? err.message : "Error al registrar usuario"
+      if (errorMessage.toLowerCase().includes("email") || 
+          errorMessage.toLowerCase().includes("correo") ||
+          errorMessage.toLowerCase().includes("ya existe") ||
+          errorMessage.toLowerCase().includes("already exists")) {
+        setError("Este correo electrónico ya está en uso")
+        setEmailError("Este correo electrónico ya está en uso")
+      } else {
+        setError(errorMessage)
+      }
     } finally {
       setIsLoading(false)
     }
@@ -200,7 +293,7 @@ function RegisterForm() {
           className="w-full px-3 md:px-4 py-2 text-xs md:text-base rounded-lg border border-input bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
-      <Button className="w-full text-xs md:text-base" size="lg" disabled={isLoading || password !== confirmPassword}>
+      <Button className="w-full text-xs md:text-base" size="lg" disabled={isLoading || password !== confirmPassword || !!emailError || isCheckingEmail}>
         {isLoading ? "Cargando..." : "Crear Cuenta"}
       </Button>
     </form>

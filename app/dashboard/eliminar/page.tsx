@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { apiClient, type Product } from "@/lib/api-client"
@@ -8,12 +9,21 @@ import { useAuth } from "@/lib/auth-context"
 
 export default function EliminarProductos() {
   const { user } = useAuth()
+  const router = useRouter()
   const [products, setProducts] = useState<Product[]>([])
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [deleteDescriptions, setDeleteDescriptions] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Solo USER y ADMIN pueden eliminar (no invitados)
+  const isGuest = user?.role === "guest"
+  useEffect(() => {
+    if (isGuest) {
+      router.push("/dashboard/consultar")
+    }
+  }, [isGuest, router])
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -35,6 +45,10 @@ export default function EliminarProductos() {
 
     loadProducts()
   }, [])
+
+  if (isGuest) {
+    return null
+  }
 
   const handleDelete = async (id: string) => {
     // Validar que la descripción sea obligatoria
