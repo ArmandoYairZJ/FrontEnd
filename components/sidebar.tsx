@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context"
-import { Package, Edit, Trash2, Plus } from "lucide-react"
+import { Package, Edit, Trash2, Plus, Search } from "lucide-react"
 
 export function Sidebar() {
   const router = useRouter()
@@ -65,6 +65,15 @@ export function Sidebar() {
               >
                 <Trash2 size={18} className="md:w-5 md:h-5" />
                 <span className="hidden sm:inline">Eliminar</span>
+              </Button>
+            </Link>
+            <Link href="/dashboard/consultar-por-id" className="flex-1 md:flex-none">
+              <Button
+                variant="outline"
+                className="w-full h-full justify-center md:justify-start bg-transparent gap-1 md:gap-3 px-2 md:px-4 text-xs md:text-base whitespace-nowrap md:whitespace-normal"
+              >
+                <Search size={18} className="md:w-5 md:h-5" />
+                <span className="hidden sm:inline">Consultar por ID</span>
               </Button>
             </Link>
           </>
