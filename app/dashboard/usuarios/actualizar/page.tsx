@@ -6,65 +6,43 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { apiClient, type User } from "@/lib/api-client"
-import { useAuth } from "@/lib/auth-context"
+import { useUsers } from "@/hooks/use-users"
+import { type User } from "@/lib/api-client"
 import { Search } from "lucide-react"
 
 export default function ActualizarUsuario() {
   const router = useRouter()
-  const { user: currentUser } = useAuth()
-  const [users, setUsers] = useState<User[]>([])
+  const {
+    users,
+    loading,
+    error,
+    editFormData,
+    editEmailError,
+    saving,
+    editingUser,
+    isAdmin,
+    setEditFormData,
+    setEditingUser,
+    setError,
+    handleSaveEdit,
+    handleEditEmailChange,
+    handleCancelEdit,
+    loadUsers,
+  } = useUsers()
+
   const [searchEmail, setSearchEmail] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [loadingSearch, setLoadingSearch] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [filteredSuggestions, setFilteredSuggestions] = useState<User[]>([])
-  const [formData, setFormData] = useState({
-    username: "",
-    email: "",
-    rol: "" as "ADMIN" | "USER" | "",
-    password: "",
-  })
-  const [loading, setLoading] = useState(false)
-  const [loadingUsers, setLoadingUsers] = useState(true)
-  const [error, setError] = useState("")
-  const [emailError, setEmailError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
+  const [wasSaving, setWasSaving] = useState(false)
 
-  // Verificar que solo ADMIN pueda acceder
   useEffect(() => {
-    const isAdmin = currentUser?.role === "admin" || 
-                    currentUser?.role === "ADMIN" || 
-                    (currentUser as any)?.role === "ADMIN" ||
-                    (currentUser as any)?.backendRole === "ADMIN"
     if (!isAdmin) {
       router.push("/dashboard")
     }
-  }, [currentUser, router])
-
-  useEffect(() => {
-    loadUsers()
-  }, [])
-
-  const loadUsers = async () => {
-    try {
-      setLoadingUsers(true)
-      const response = await apiClient.getUsers()
-
-      if (response.error) {
-        setError(response.error)
-        return
-      }
-
-      if (response.data) {
-        setUsers(response.data)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al cargar usuarios")
-    } finally {
-      setLoadingUsers(false)
-    }
-  }
+  }, [isAdmin, router])
 
   // Filtrar sugerencias mientras se escribe
   useEffect(() => {
@@ -74,7 +52,7 @@ export default function ActualizarUsuario() {
         user.email?.toLowerCase().includes(searchTerm) ||
         user.username?.toLowerCase().includes(searchTerm)
       )
-      setFilteredSuggestions(filtered.slice(0, 5)) // Máximo 5 sugerencias
+      setFilteredSuggestions(filtered.slice(0, 5))
       setShowSuggestions(true)
     } else {
       setFilteredSuggestions([])
@@ -84,15 +62,10 @@ export default function ActualizarUsuario() {
 
   const handleSelectSuggestion = (user: User) => {
     setSearchEmail(user.email || "")
+    handleEdit(user)
     setSelectedUser(user)
-    setFormData({
-      username: user.username || "",
-      email: user.email || "",
-      rol: (user.rol as "ADMIN" | "USER") || "",
-      password: "",
-    })
     setShowSuggestions(false)
-    setError("")
+    setError(null)
   }
 
   const handleSearchByEmail = async () => {
@@ -108,21 +81,15 @@ export default function ActualizarUsuario() {
       setSelectedUser(null)
       setShowSuggestions(false)
 
-      // Buscar por email en la lista de usuarios
       const searchTerm = searchEmail.trim().toLowerCase()
       const foundUser = users.find((u) => 
         u.email?.toLowerCase() === searchTerm
       )
 
       if (foundUser) {
+        handleEdit(foundUser)
         setSelectedUser(foundUser)
-        setFormData({
-          username: foundUser.username || "",
-          email: foundUser.email || "",
-          rol: (foundUser.rol as "ADMIN" | "USER") || "",
-          password: "",
-        })
-        setEmailError("")
+        setEditEmailError("")
       } else {
         setError("No se encontró un usuario con ese email")
       }
@@ -134,120 +101,33 @@ export default function ActualizarUsuario() {
     }
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }))
-    setError("")
-    
-    // Validar email en tiempo real solo si hay un usuario seleccionado
-    if (name === "email" && value.trim() && selectedUser) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(value)) {
-        setEmailError("Por favor ingresa un email válido")
-      } else {
-        // Verificar si el email ya existe en otro usuario
-        const emailExists = users.some(
-          (u) => u.id !== selectedUser.id && u.email?.toLowerCase() === value.toLowerCase()
-        )
-        if (emailExists) {
-          setEmailError("Este correo electrónico ya está en uso por otro usuario")
-        } else {
-          setEmailError("")
-        }
-      }
-    } else if (name === "email") {
-      setEmailError("")
+  // Detectar éxito cuando se completa la edición
+  useEffect(() => {
+    if (wasSaving && !saving && !error && !editingUser) {
+      setSuccessMessage("Usuario actualizado exitosamente")
+      setSearchEmail("")
+      setSelectedUser(null)
+      setWasSaving(false)
+      
+      setTimeout(() => {
+        router.push("/dashboard/usuarios/consultar")
+      }, 2000)
     }
-  }
-
-  const handleRolChange = (value: "ADMIN" | "USER") => {
-    setFormData((prev) => ({
-      ...prev,
-      rol: value,
-    }))
-    setError("")
-  }
+  }, [saving, error, editingUser, wasSaving, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!selectedUser) {
+    if (!editingUser) {
       setError("Por favor selecciona un usuario")
       return
     }
 
-    setLoading(true)
-    setError("")
     setSuccessMessage("")
-
-    try {
-      // Verificar si hay error de email
-      if (emailError) {
-        setError(emailError)
-        setLoading(false)
-        return
-      }
-
-      // Verificar si el email cambió y si ya existe en otro usuario (validación adicional)
-      if (formData.email !== selectedUser.email) {
-        const emailExists = users.some(
-          (u) => u.id !== selectedUser.id && u.email?.toLowerCase() === formData.email.toLowerCase()
-        )
-
-        if (emailExists) {
-          setError("Este correo electrónico ya está en uso por otro usuario. Por favor, usa otro email.")
-          setEmailError("Este correo electrónico ya está en uso por otro usuario")
-          setLoading(false)
-          return
-        }
-      }
-
-      // El backend requiere todos los campos, incluso si están vacíos
-      const updateData: any = {
-        username: formData.username || "",
-        email: formData.email || "",
-        rol: formData.rol || selectedUser.rol || "USER",
-        password: formData.password || "", // Si no se quiere cambiar, enviar vacío
-      }
-
-      const response = await apiClient.updateUser(selectedUser.id, updateData)
-
-      if (response.error) {
-        setError(response.error)
-        return
-      }
-
-      setSuccessMessage("Usuario actualizado exitosamente")
-      
-      // Recargar usuarios y resetear formulario
-      await loadUsers()
-      setSearchEmail("")
-      setSelectedUser(null)
-      setFormData({
-        username: "",
-        email: "",
-        rol: "",
-        password: "",
-      })
-
-      setTimeout(() => {
-        router.push("/dashboard/usuarios/consultar")
-      }, 2000)
-    } catch (err) {
-      console.error("Error al actualizar usuario:", err)
-      setError("Error al actualizar el usuario")
-    } finally {
-      setLoading(false)
-    }
+    setWasSaving(true)
+    await handleSaveEdit()
   }
 
-  const isAdmin = currentUser?.role === "admin" || 
-                  currentUser?.role === "ADMIN" || 
-                  (currentUser as any)?.role === "ADMIN" ||
-                  (currentUser as any)?.backendRole === "ADMIN"
   if (!isAdmin) {
     return null
   }
@@ -291,7 +171,6 @@ export default function ActualizarUsuario() {
                   }
                 }}
                 onBlur={() => {
-                  // Delay para permitir click en sugerencias
                   setTimeout(() => setShowSuggestions(false), 200)
                 }}
                 onKeyPress={(e) => {
@@ -300,7 +179,7 @@ export default function ActualizarUsuario() {
                   }
                 }}
                 placeholder="usuario@ejemplo.com"
-                disabled={loading || loadingUsers || loadingSearch}
+                disabled={saving || loading || loadingSearch}
                 className="w-full text-xs md:text-base"
               />
               {/* Dropdown de sugerencias */}
@@ -325,7 +204,7 @@ export default function ActualizarUsuario() {
             <div className="flex items-end">
               <Button 
                 onClick={handleSearchByEmail} 
-                disabled={loading || loadingUsers || loadingSearch || !searchEmail.trim()}
+                disabled={saving || loading || loadingSearch || !searchEmail.trim()}
                 className="w-full sm:w-auto"
               >
                 {loadingSearch ? "Buscando..." : <><Search size={18} className="mr-2" /> Buscar</>}
@@ -336,14 +215,14 @@ export default function ActualizarUsuario() {
       </Card>
 
       {/* Formulario de actualización */}
-      {selectedUser && (
+      {editingUser && editFormData && (
         <Card className="p-4 md:p-6">
           <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
             <div>
               <label className="block text-xs md:text-sm font-medium text-foreground mb-2">ID del Usuario</label>
               <Input
                 type="text"
-                value={selectedUser.id}
+                value={editingUser.id}
                 disabled
                 className="w-full text-xs md:text-base bg-muted"
               />
@@ -354,10 +233,10 @@ export default function ActualizarUsuario() {
               <Input
                 type="text"
                 name="username"
-                value={formData.username}
-                onChange={handleChange}
+                value={editFormData.username}
+                onChange={(e) => setEditFormData({ ...editFormData, username: e.target.value })}
                 placeholder="nombre_usuario"
-                disabled={loading}
+                disabled={saving}
                 className="w-full text-xs md:text-base"
               />
             </div>
@@ -367,23 +246,23 @@ export default function ActualizarUsuario() {
               <Input
                 type="email"
                 name="email"
-                value={formData.email}
-                onChange={handleChange}
+                value={editFormData.email}
+                onChange={(e) => handleEditEmailChange(e.target.value)}
                 placeholder="usuario@ejemplo.com"
-                disabled={loading}
-                className={`w-full text-xs md:text-base ${emailError ? "border-destructive" : ""}`}
+                disabled={saving}
+                className={`w-full text-xs md:text-base ${editEmailError ? "border-destructive" : ""}`}
               />
-              {emailError && (
-                <p className="text-xs text-destructive mt-1">{emailError}</p>
+              {editEmailError && (
+                <p className="text-xs text-destructive mt-1">{editEmailError}</p>
               )}
             </div>
 
             <div>
               <label className="block text-xs md:text-sm font-medium text-foreground mb-2">Rol</label>
               <Select
-                value={formData.rol}
-                onValueChange={handleRolChange}
-                disabled={loading}
+                value={editFormData.rol}
+                onValueChange={(value: "ADMIN" | "USER") => setEditFormData({ ...editFormData, rol: value })}
+                disabled={saving}
               >
                 <SelectTrigger className="w-full text-xs md:text-base">
                   <SelectValue placeholder="Selecciona un rol" />
@@ -402,23 +281,23 @@ export default function ActualizarUsuario() {
               <Input
                 type="password"
                 name="password"
-                value={formData.password}
-                onChange={handleChange}
+                value={editFormData.password}
+                onChange={(e) => setEditFormData({ ...editFormData, password: e.target.value })}
                 placeholder="Deja vacío para no cambiar"
-                disabled={loading}
+                disabled={saving}
                 className="w-full text-xs md:text-base"
               />
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2 md:gap-3 pt-2 md:pt-4">
-              <Button type="submit" disabled={loading || !!emailError} className="flex-1 text-xs md:text-base">
-                {loading ? "Actualizando..." : "Actualizar Usuario"}
+              <Button type="submit" disabled={saving || !!editEmailError} className="flex-1 text-xs md:text-base">
+                {saving ? "Actualizando..." : "Actualizar Usuario"}
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => router.back()}
-                disabled={loading}
+                disabled={saving}
                 className="flex-1 text-xs md:text-base"
               >
                 Cancelar
@@ -430,4 +309,3 @@ export default function ActualizarUsuario() {
     </div>
   )
 }
-

@@ -5,58 +5,37 @@ import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { apiClient, type User } from "@/lib/api-client"
-import { useAuth } from "@/lib/auth-context"
+import { useUsers } from "@/hooks/use-users"
+import { type User } from "@/lib/api-client"
 import { Search } from "lucide-react"
 
 export default function EliminarUsuario() {
   const router = useRouter()
-  const { user: currentUser } = useAuth()
-  const [users, setUsers] = useState<User[]>([])
+  const {
+    users,
+    loading,
+    error,
+    deletingUser,
+    deleting,
+    isAdmin,
+    setDeletingUser,
+    setError,
+    handleDelete,
+    loadUsers,
+  } = useUsers()
+
   const [searchEmail, setSearchEmail] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [loadingSearch, setLoadingSearch] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [filteredSuggestions, setFilteredSuggestions] = useState<User[]>([])
-  const [loading, setLoading] = useState(false)
-  const [loadingUsers, setLoadingUsers] = useState(true)
-  const [error, setError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
 
-  // Verificar que solo ADMIN pueda acceder
   useEffect(() => {
-    const isAdmin = currentUser?.role === "admin" || 
-                    currentUser?.role === "ADMIN" || 
-                    (currentUser as any)?.role === "ADMIN" ||
-                    (currentUser as any)?.backendRole === "ADMIN"
     if (!isAdmin) {
       router.push("/dashboard")
     }
-  }, [currentUser, router])
-
-  useEffect(() => {
-    loadUsers()
-  }, [])
-
-  const loadUsers = async () => {
-    try {
-      setLoadingUsers(true)
-      const response = await apiClient.getUsers()
-
-      if (response.error) {
-        setError(response.error)
-        return
-      }
-
-      if (response.data) {
-        setUsers(response.data)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al cargar usuarios")
-    } finally {
-      setLoadingUsers(false)
-    }
-  }
+  }, [isAdmin, router])
 
   // Filtrar sugerencias mientras se escribe
   useEffect(() => {
@@ -66,7 +45,7 @@ export default function EliminarUsuario() {
         user.email?.toLowerCase().includes(searchTerm) ||
         user.username?.toLowerCase().includes(searchTerm)
       )
-      setFilteredSuggestions(filtered.slice(0, 5)) // Máximo 5 sugerencias
+      setFilteredSuggestions(filtered.slice(0, 5))
       setShowSuggestions(true)
     } else {
       setFilteredSuggestions([])
@@ -77,6 +56,7 @@ export default function EliminarUsuario() {
   const handleSelectSuggestion = (user: User) => {
     setSearchEmail(user.email || "")
     setSelectedUser(user)
+    setDeletingUser(user)
     setShowSuggestions(false)
     setError("")
   }
@@ -94,7 +74,6 @@ export default function EliminarUsuario() {
       setSelectedUser(null)
       setShowSuggestions(false)
 
-      // Buscar por email en la lista de usuarios
       const searchTerm = searchEmail.trim().toLowerCase()
       const foundUser = users.find((u) => 
         u.email?.toLowerCase() === searchTerm
@@ -102,6 +81,7 @@ export default function EliminarUsuario() {
 
       if (foundUser) {
         setSelectedUser(foundUser)
+        setDeletingUser(foundUser)
       } else {
         setError("No se encontró un usuario con ese email")
       }
@@ -113,8 +93,24 @@ export default function EliminarUsuario() {
     }
   }
 
-  const handleDelete = async () => {
-    if (!selectedUser) {
+  const [wasDeleting, setWasDeleting] = useState(false)
+
+  // Detectar éxito cuando se completa la eliminación
+  useEffect(() => {
+    if (wasDeleting && !deleting && !error && !deletingUser) {
+      setSuccessMessage("Usuario eliminado exitosamente")
+      setSearchEmail("")
+      setSelectedUser(null)
+      setWasDeleting(false)
+      
+      setTimeout(() => {
+        router.push("/dashboard/usuarios/consultar")
+      }, 2000)
+    }
+  }, [deleting, error, deletingUser, wasDeleting, router])
+
+  const handleDeleteClick = async () => {
+    if (!selectedUser || !deletingUser) {
       setError("Por favor selecciona un usuario")
       return
     }
@@ -127,55 +123,11 @@ export default function EliminarUsuario() {
       return
     }
 
-    setLoading(true)
-    setError("")
     setSuccessMessage("")
-
-    try {
-      // Obtener user_id del usuario autenticado
-      let userId = currentUser?.id || ""
-      
-      // Si el userId es un email o está vacío, intentar obtener el ID real del backend
-      if (!userId || userId.includes("@")) {
-        try {
-          const userResponse = await apiClient.getCurrentUser(currentUser?.email)
-          if (userResponse.data?.id) {
-            userId = String(userResponse.data.id)
-          }
-        } catch (e) {
-          console.warn("No se pudo obtener el ID del usuario:", e)
-        }
-      }
-
-      const response = await apiClient.deleteUser(selectedUser.id, userId, "")
-
-      if (response.error) {
-        setError(response.error)
-        return
-      }
-
-      setSuccessMessage("Usuario eliminado exitosamente")
-      
-      // Recargar usuarios y resetear selección
-      await loadUsers()
-      setSearchEmail("")
-      setSelectedUser(null)
-
-      setTimeout(() => {
-        router.push("/dashboard/usuarios/consultar")
-      }, 2000)
-    } catch (err) {
-      console.error("Error al eliminar usuario:", err)
-      setError("Error al eliminar el usuario")
-    } finally {
-      setLoading(false)
-    }
+    setWasDeleting(true)
+    await handleDelete()
   }
 
-  const isAdmin = currentUser?.role === "admin" || 
-                  currentUser?.role === "ADMIN" || 
-                  (currentUser as any)?.role === "ADMIN" ||
-                  (currentUser as any)?.backendRole === "ADMIN"
   if (!isAdmin) {
     return null
   }
@@ -219,7 +171,6 @@ export default function EliminarUsuario() {
                   }
                 }}
                 onBlur={() => {
-                  // Delay para permitir click en sugerencias
                   setTimeout(() => setShowSuggestions(false), 200)
                 }}
                 onKeyPress={(e) => {
@@ -228,7 +179,7 @@ export default function EliminarUsuario() {
                   }
                 }}
                 placeholder="usuario@ejemplo.com"
-                disabled={loading || loadingUsers || loadingSearch}
+                disabled={deleting || loading || loadingSearch}
                 className="w-full text-xs md:text-base"
               />
               {/* Dropdown de sugerencias */}
@@ -253,7 +204,7 @@ export default function EliminarUsuario() {
             <div className="flex items-end">
               <Button 
                 onClick={handleSearchByEmail} 
-                disabled={loading || loadingUsers || loadingSearch || !searchEmail.trim()}
+                disabled={deleting || loading || loadingSearch || !searchEmail.trim()}
                 className="w-full sm:w-auto"
               >
                 {loadingSearch ? "Buscando..." : <><Search size={18} className="mr-2" /> Buscar</>}
@@ -292,18 +243,18 @@ export default function EliminarUsuario() {
       {selectedUser && (
         <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
           <Button
-            onClick={handleDelete}
-            disabled={loading || !selectedUser}
+            onClick={handleDeleteClick}
+            disabled={deleting || !selectedUser}
             variant="destructive"
             className="flex-1 text-xs md:text-base"
           >
-            {loading ? "Eliminando..." : "Eliminar Usuario"}
+            {deleting ? "Eliminando..." : "Eliminar Usuario"}
           </Button>
           <Button
             type="button"
             variant="outline"
             onClick={() => router.back()}
-            disabled={loading}
+            disabled={deleting}
             className="flex-1 text-xs md:text-base"
           >
             Cancelar
@@ -313,4 +264,3 @@ export default function EliminarUsuario() {
     </div>
   )
 }
-

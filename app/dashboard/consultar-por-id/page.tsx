@@ -3,14 +3,20 @@
 import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { apiClient, type Product } from "@/lib/api-client"
+import { Input } from "@/components/ui/input"
+import { useProducts } from "@/hooks/use-products"
+import { type Product } from "@/lib/api-client"
 
 export default function ConsultarPorId() {
+  const {
+    error,
+    setError,
+    searchProductById,
+  } = useProducts()
+  
   const [productId, setProductId] = useState("")
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
 
   const handleSearch = async () => {
     if (!productId.trim()) {
@@ -23,22 +29,15 @@ export default function ConsultarPorId() {
       setError(null)
       setProduct(null)
 
-      const response = await apiClient.getProduct(productId.trim())
+      const foundProduct = await searchProductById(productId.trim())
 
-      if (response.error) {
-        setError(response.error)
-        setProduct(null)
-        return
-      }
-
-      if (response.data) {
-        setProduct(response.data)
+      if (foundProduct) {
+        setProduct(foundProduct)
       } else {
         setError("No se encontró un producto con ese ID")
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Error al buscar producto"
-      setError(errorMessage)
+      setError(err instanceof Error ? err.message : "Error al buscar producto")
       setProduct(null)
     } finally {
       setLoading(false)
@@ -62,7 +61,7 @@ export default function ConsultarPorId() {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1">
             <label className="block text-sm font-medium text-foreground mb-2">ID del Producto</label>
-            <input
+            <Input
               type="text"
               value={productId}
               onChange={(e) => {
@@ -72,7 +71,7 @@ export default function ConsultarPorId() {
               }}
               onKeyPress={handleKeyPress}
               placeholder="Ingresa el ID del producto"
-              className="w-full px-4 py-2 rounded-lg border border-input bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full"
             />
           </div>
           <div className="flex items-end">
@@ -124,4 +123,3 @@ export default function ConsultarPorId() {
     </div>
   )
 }
-

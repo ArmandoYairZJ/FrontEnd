@@ -6,55 +6,32 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useUsers } from "@/hooks/use-users"
 import { apiClient, type User } from "@/lib/api-client"
-import { useAuth } from "@/lib/auth-context"
 import { Search } from "lucide-react"
 
 export default function ConsultarUsuarios() {
   const router = useRouter()
-  const { user } = useAuth()
-  const [users, setUsers] = useState<User[]>([])
-  const [filteredUsers, setFilteredUsers] = useState<User[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const {
+    users,
+    filteredUsers,
+    loading,
+    error,
+    isAdmin,
+    loadUsers,
+    setError,
+  } = useUsers()
+  
   const [searchValue, setSearchValue] = useState("")
   const [searchType, setSearchType] = useState<"id" | "username" | "email">("id")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [loadingSearch, setLoadingSearch] = useState(false)
 
-  // Verificar que solo ADMIN pueda acceder
   useEffect(() => {
-    const isAdmin = (user as any)?.backendRole === "ADMIN"
     if (!isAdmin) {
       router.push("/dashboard")
     }
-  }, [user, router])
-
-  useEffect(() => {
-    loadUsers()
-  }, [])
-
-  const loadUsers = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await apiClient.getUsers()
-
-      if (response.error) {
-        setError(response.error)
-        return
-      }
-
-      if (response.data) {
-        setUsers(response.data)
-        setFilteredUsers(response.data)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al cargar usuarios")
-    } finally {
-      setLoading(false)
-    }
-  }
+  }, [isAdmin, router])
 
   const handleSearch = async () => {
     if (!searchValue.trim()) {
@@ -109,7 +86,6 @@ export default function ConsultarUsuarios() {
     }
   }
 
-  const isAdmin = (user as any)?.backendRole === "ADMIN"
   if (!isAdmin) {
     return null
   }
@@ -258,4 +234,3 @@ export default function ConsultarUsuarios() {
     </div>
   )
 }
-

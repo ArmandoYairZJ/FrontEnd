@@ -4,111 +4,78 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { apiClient, type Product } from "@/lib/api-client"
+import { Textarea } from "@/components/ui/textarea"
+import { useProducts } from "@/hooks/use-products"
 import { useAuth } from "@/lib/auth-context"
+import { type Product } from "@/lib/api-client"
 
 export default function EliminarProductos() {
   const { user } = useAuth()
   const router = useRouter()
-  const [products, setProducts] = useState<Product[]>([])
+  const {
+    products,
+    loading,
+    error,
+    deleteDescription,
+    deleting,
+    setDeletingProduct,
+    setDeleteDescription,
+    setError,
+    handleDelete,
+    loadProducts,
+  } = useProducts()
+
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
-  const [deleteDescriptions, setDeleteDescriptions] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(true)
-  const [deleting, setDeleting] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [wasDeleting, setWasDeleting] = useState(false)
 
   // Solo USER y ADMIN pueden eliminar (no invitados)
   const isGuest = user?.role === "guest"
+  
   useEffect(() => {
     if (isGuest) {
       router.push("/dashboard/consultar")
     }
   }, [isGuest, router])
 
+  // Detectar éxito cuando se completa la eliminación
   useEffect(() => {
-    const loadProducts = async () => {
-      try {
-        setLoading(true)
-        const response = await apiClient.getProducts()
-        
-        if (response.error) {
-          setError(response.error)
-        } else if (response.data) {
-          setProducts(response.data)
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Error al cargar productos")
-      } finally {
-        setLoading(false)
-      }
+    if (wasDeleting && !deleting && !error && !confirmDelete) {
+      setWasDeleting(false)
+      // Recargar productos después de eliminar
+      loadProducts()
     }
+  }, [deleting, error, confirmDelete, wasDeleting, loadProducts])
 
-    loadProducts()
-  }, [])
+  const handleDeleteClick = async (id: string) => {
+    const product = products.find(p => p.id === id)
+    if (!product) return
+
+    setDeletingProduct(product)
+    setConfirmDelete(id)
+  }
+
+  const confirmDeleteAction = async () => {
+    if (!confirmDelete) return
+
+    setWasDeleting(true)
+    await handleDelete()
+    
+    if (!error) {
+      setConfirmDelete(null)
+    } else {
+      setWasDeleting(false)
+    }
+  }
+
+  const cancelDelete = () => {
+    setConfirmDelete(null)
+    setDeletingProduct(null)
+    setDeleteDescription("")
+    setError(null)
+  }
 
   if (isGuest) {
     return null
-  }
-
-  const handleDelete = async (id: string) => {
-    // Validar que la descripción sea obligatoria
-    const description = deleteDescriptions[id]?.trim() || ""
-    
-    if (!description) {
-      setError("La descripción es obligatoria. Por favor, describe el motivo de la eliminación.")
-      alert("La descripción es obligatoria. Por favor, describe el motivo de la eliminación.")
-      return
-    }
-
-    try {
-      setDeleting(id)
-      setError(null)
-      
-      // Obtener user_id del usuario autenticado
-      let userId = user?.id || ""
-      
-      // Si el userId es un email o está vacío, intentar obtener el ID real del backend
-      if (!userId || userId.includes("@")) {
-        try {
-          const userResponse = await apiClient.getCurrentUser(user?.email)
-          if (userResponse.data?.id) {
-            userId = String(userResponse.data.id)
-          }
-        } catch (e) {
-          console.warn("No se pudo obtener el ID del usuario:", e)
-        }
-      }
-      
-      const finalDescription = description
-      
-      console.log("Eliminando producto con:", { 
-        product_id: id, 
-        user_id: userId, 
-        description: finalDescription 
-      })
-      
-      const response = await apiClient.deleteProduct(id, userId, finalDescription)
-      
-      if (response.error) {
-        setError(response.error)
-        alert(response.error)
-        return
-      }
-
-      setProducts(products.filter((p) => p.id !== id))
-      setConfirmDelete(null)
-      // Limpiar la descripción de este producto
-      const newDescriptions = { ...deleteDescriptions }
-      delete newDescriptions[id]
-      setDeleteDescriptions(newDescriptions)
-      setError(null)
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Error al eliminar producto"
-      setError(errorMessage)
-      alert(errorMessage)
-    } finally {
-      setDeleting(null)
-    }
   }
 
   if (loading) {
@@ -124,7 +91,7 @@ export default function EliminarProductos() {
     )
   }
 
-  if (error) {
+  if (error && !confirmDelete) {
     return (
       <div className="p-8">
         <div className="mb-8">
@@ -160,7 +127,9 @@ export default function EliminarProductos() {
                   <div className="flex gap-4 mt-4">
                     <div className="bg-muted rounded-lg p-3">
                       <p className="text-xs text-muted-foreground mb-1">Precio</p>
-                      <p className="text-lg font-semibold text-foreground">${typeof product.precio === 'number' ? product.precio.toFixed(2) : Number(product.precio || 0).toFixed(2)}</p>
+                      <p className="text-lg font-semibold text-foreground">
+                        ${typeof product.precio === 'number' ? product.precio.toFixed(2) : Number(product.precio || 0).toFixed(2)}
+                      </p>
                     </div>
                     <div className="bg-muted rounded-lg p-3">
                       <p className="text-xs text-muted-foreground mb-1">Stock</p>
@@ -179,29 +148,18 @@ export default function EliminarProductos() {
                       <label className="block text-sm font-medium text-foreground mb-2">
                         Motivo de eliminación <span className="text-destructive">*</span>
                       </label>
-                      <textarea
-                        value={deleteDescriptions[product.id] || ""}
+                      <Textarea
+                        value={deleteDescription}
                         onChange={(e) => {
-                          setDeleteDescriptions({
-                            ...deleteDescriptions,
-                            [product.id]: e.target.value
-                          })
-                          // Limpiar error si el usuario empieza a escribir
-                          if (error && e.target.value.trim()) {
-                            setError(null)
-                          }
+                          setDeleteDescription(e.target.value)
+                          if (error) setError(null)
                         }}
                         placeholder="Describe por qué estás eliminando este producto... (Obligatorio)"
-                        className={`w-full px-3 py-2 text-sm rounded-lg border bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 resize-none ${
-                          !deleteDescriptions[product.id]?.trim() && error 
-                            ? "border-destructive focus:ring-destructive" 
-                            : "border-input focus:ring-primary"
-                        }`}
                         rows={3}
-                        disabled={deleting === product.id}
-                        required
+                        disabled={deleting}
+                        className={!deleteDescription.trim() && error ? "border-destructive" : ""}
                       />
-                      {!deleteDescriptions[product.id]?.trim() && (
+                      {!deleteDescription.trim() && error && (
                         <p className="text-xs text-destructive mt-1">
                           Este campo es obligatorio
                         </p>
@@ -209,31 +167,25 @@ export default function EliminarProductos() {
                     </div>
                     <div className="flex gap-3">
                       <Button 
-                        onClick={() => handleDelete(product.id)} 
+                        onClick={confirmDeleteAction} 
                         variant="destructive" 
-                        className="flex-1"
-                        disabled={deleting === product.id || !deleteDescriptions[product.id]?.trim()}
+                        className="flex-1 text-destructive-foreground"
+                        disabled={deleting || !deleteDescription.trim()}
                       >
-                        {deleting === product.id ? "Eliminando..." : "Eliminar"}
+                        {deleting ? "Eliminando..." : "Eliminar"}
                       </Button>
                       <Button 
-                        onClick={() => {
-                          setConfirmDelete(null)
-                          // Limpiar la descripción de este producto
-                          const newDescriptions = { ...deleteDescriptions }
-                          delete newDescriptions[product.id]
-                          setDeleteDescriptions(newDescriptions)
-                        }} 
+                        onClick={cancelDelete} 
                         variant="outline" 
                         className="flex-1"
-                        disabled={deleting === product.id}
+                        disabled={deleting}
                       >
                         Cancelar
                       </Button>
                     </div>
                   </div>
                 ) : (
-                  <Button onClick={() => setConfirmDelete(product.id)} variant="destructive" className="w-full">
+                  <Button onClick={() => handleDeleteClick(product.id)} variant="destructive" className="w-full">
                     Eliminar Producto
                   </Button>
                 )}

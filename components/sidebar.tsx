@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context"
-import { Package, Edit, Trash2, Plus, Search, Users } from "lucide-react"
+import { Package, Users } from "lucide-react"
 
 export function Sidebar() {
   const router = useRouter()
@@ -36,60 +36,16 @@ export function Sidebar() {
 
       {/* Navigation - Made responsive with flex wrap on mobile and vertical on desktop */}
       <nav className="flex-1 px-3 md:px-4 py-3 md:py-6 flex md:flex-col gap-2 md:gap-4 overflow-x-auto md:overflow-visible">
-        {/* Consultar - Visible para todos */}
-        <Link href="/dashboard/consultar" className="flex-1 md:flex-none">
+        {/* Productos - Visible para todos */}
+        <Link href="/dashboard/productos" className="flex-1 md:flex-none">
           <Button
             variant="outline"
             className="w-full h-full justify-center md:justify-start bg-transparent gap-1 md:gap-3 px-2 md:px-4 text-xs md:text-base whitespace-nowrap md:whitespace-normal"
           >
             <Package size={18} className="md:w-5 md:h-5" />
-            <span className="hidden sm:inline">Consultar</span>
+            <span className="hidden sm:inline">Productos</span>
           </Button>
         </Link>
-        
-        {/* Consultar por ID - Visible para todos */}
-        <Link href="/dashboard/consultar-por-id" className="flex-1 md:flex-none">
-          <Button
-            variant="outline"
-            className="w-full h-full justify-center md:justify-start bg-transparent gap-1 md:gap-3 px-2 md:px-4 text-xs md:text-base whitespace-nowrap md:whitespace-normal"
-          >
-            <Search size={18} className="md:w-5 md:h-5" />
-            <span className="hidden sm:inline">Consultar por ID</span>
-          </Button>
-        </Link>
-
-        {/* Crear, Actualizar, Eliminar - Solo para USER y ADMIN (no invitados) */}
-        {!isGuest && (
-          <>
-            <Link href="/dashboard/crear" className="flex-1 md:flex-none">
-              <Button
-                variant="outline"
-                className="w-full h-full justify-center md:justify-start bg-transparent gap-1 md:gap-3 px-2 md:px-4 text-xs md:text-base whitespace-nowrap md:whitespace-normal"
-              >
-                <Plus size={18} className="md:w-5 md:h-5" />
-                <span className="hidden sm:inline">Crear</span>
-              </Button>
-            </Link>
-            <Link href="/dashboard/actualizar" className="flex-1 md:flex-none">
-              <Button
-                variant="outline"
-                className="w-full h-full justify-center md:justify-start bg-transparent gap-1 md:gap-3 px-2 md:px-4 text-xs md:text-base whitespace-nowrap md:whitespace-normal"
-              >
-                <Edit size={18} className="md:w-5 md:h-5" />
-                <span className="hidden sm:inline">Actualizar</span>
-              </Button>
-            </Link>
-            <Link href="/dashboard/eliminar" className="flex-1 md:flex-none">
-              <Button
-                variant="outline"
-                className="w-full h-full justify-center md:justify-start bg-transparent gap-1 md:gap-3 px-2 md:px-4 text-xs md:text-base whitespace-nowrap md:whitespace-normal"
-              >
-                <Trash2 size={18} className="md:w-5 md:h-5" />
-                <span className="hidden sm:inline">Eliminar</span>
-              </Button>
-            </Link>
-          </>
-        )}
         
         {/* Sección de Usuarios - Solo para ADMIN */}
         {isAdmin && (
@@ -98,40 +54,13 @@ export function Sidebar() {
             <div className="px-3 md:px-4 py-2">
               <h2 className="text-xs md:text-sm font-semibold text-muted-foreground uppercase tracking-wide">Usuarios</h2>
             </div>
-            <Link href="/dashboard/usuarios/consultar" className="flex-1 md:flex-none">
+            <Link href="/dashboard/usuarios" className="flex-1 md:flex-none">
               <Button
                 variant="outline"
                 className="w-full h-full justify-center md:justify-start bg-transparent gap-1 md:gap-3 px-2 md:px-4 text-xs md:text-base whitespace-nowrap md:whitespace-normal"
               >
                 <Users size={18} className="md:w-5 md:h-5" />
-                <span className="hidden sm:inline">Consultar Usuarios</span>
-              </Button>
-            </Link>
-            <Link href="/dashboard/usuarios/crear" className="flex-1 md:flex-none">
-              <Button
-                variant="outline"
-                className="w-full h-full justify-center md:justify-start bg-transparent gap-1 md:gap-3 px-2 md:px-4 text-xs md:text-base whitespace-nowrap md:whitespace-normal"
-              >
-                <Plus size={18} className="md:w-5 md:h-5" />
-                <span className="hidden sm:inline">Crear Usuario</span>
-              </Button>
-            </Link>
-            <Link href="/dashboard/usuarios/actualizar" className="flex-1 md:flex-none">
-              <Button
-                variant="outline"
-                className="w-full h-full justify-center md:justify-start bg-transparent gap-1 md:gap-3 px-2 md:px-4 text-xs md:text-base whitespace-nowrap md:whitespace-normal"
-              >
-                <Edit size={18} className="md:w-5 md:h-5" />
-                <span className="hidden sm:inline">Actualizar Usuario</span>
-              </Button>
-            </Link>
-            <Link href="/dashboard/usuarios/eliminar" className="flex-1 md:flex-none">
-              <Button
-                variant="outline"
-                className="w-full h-full justify-center md:justify-start bg-transparent gap-1 md:gap-3 px-2 md:px-4 text-xs md:text-base whitespace-nowrap md:whitespace-normal"
-              >
-                <Trash2 size={18} className="md:w-5 md:h-5" />
-                <span className="hidden sm:inline">Eliminar Usuario</span>
+                <span className="hidden sm:inline">Usuarios</span>
               </Button>
             </Link>
           </>

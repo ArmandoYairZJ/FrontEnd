@@ -4,142 +4,80 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { apiClient, type Product } from "@/lib/api-client"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { useProducts } from "@/hooks/use-products"
 import { useAuth } from "@/lib/auth-context"
+import { type Product } from "@/lib/api-client"
 
 export default function ActualizarProductos() {
   const { user } = useAuth()
   const router = useRouter()
-  const [products, setProducts] = useState<Product[]>([])
+  const {
+    products,
+    loading,
+    error,
+    editingProduct,
+    editFormData,
+    updateDescription,
+    saving,
+    setEditFormData,
+    setUpdateDescription,
+    setError,
+    handleEdit,
+    handleSaveEdit,
+    handleCancelEdit,
+    loadProducts,
+  } = useProducts()
+
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editData, setEditData] = useState<Product | null>(null)
-  const [updateDescriptions, setUpdateDescriptions] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [wasSaving, setWasSaving] = useState(false)
 
   // Solo USER y ADMIN pueden actualizar (no invitados)
   const isGuest = user?.role === "guest"
+  
   useEffect(() => {
     if (isGuest) {
       router.push("/dashboard/consultar")
     }
   }, [isGuest, router])
 
+  // Detectar éxito cuando se completa la edición
   useEffect(() => {
-    const loadProducts = async () => {
-      try {
-        setLoading(true)
-        const response = await apiClient.getProducts()
-        
-        if (response.error) {
-          setError(response.error)
-        } else if (response.data) {
-          setProducts(response.data)
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Error al cargar productos")
-      } finally {
-        setLoading(false)
-      }
+    if (wasSaving && !saving && !error && !editingProduct) {
+      setEditingId(null)
+      setWasSaving(false)
+      setTimeout(() => {
+        router.push("/dashboard/consultar")
+      }, 500)
     }
-
-    loadProducts()
-  }, [])
-
-  if (isGuest) {
-    return null
-  }
+  }, [saving, error, editingProduct, wasSaving, router])
 
   const startEdit = (product: Product) => {
     setEditingId(product.id)
-    setEditData({ ...product })
+    handleEdit(product)
   }
 
   const saveEdit = async () => {
-    if (!editData || !editingId) return
+    if (!editFormData || !editingId) return
 
-    // Validar que la descripción sea obligatoria
-    const description = updateDescriptions[editingId]?.trim() || ""
+    setWasSaving(true)
+    await handleSaveEdit()
     
-    if (!description) {
-      setError("La descripción es obligatoria. Por favor, describe el motivo de la actualización.")
-      alert("La descripción es obligatoria. Por favor, describe el motivo de la actualización.")
-      return
-    }
-
-    try {
-      setSaving(true)
-      setError(null)
-      
-      // Excluir el id del objeto que se envía
-      const { id, ...updateData } = editData
-      
-      // Obtener user_id del usuario autenticado
-      let userId = user?.id || ""
-      
-      // Si el userId es un email o está vacío, intentar obtener el ID real del backend
-      if (!userId || userId.includes("@")) {
-        try {
-          const userResponse = await apiClient.getCurrentUser(user?.email)
-          if (userResponse.data?.id) {
-            userId = String(userResponse.data.id)
-          }
-        } catch (e) {
-          console.warn("No se pudo obtener el ID del usuario:", e)
-        }
-      }
-      
-      const finalDescription = description
-      
-      console.log("Actualizando producto con:", { 
-        product_id: editingId, 
-        user_id: userId, 
-        description: finalDescription 
-      })
-      
-      const response = await apiClient.updateProduct(editingId, updateData, userId, finalDescription)
-      
-      if (response.error) {
-        setError(response.error)
-        alert(response.error)
-        return
-      }
-
-      if (response.data) {
-        // Actualizar la lista de productos
-        setProducts(products.map((p) => (p.id === editingId ? response.data! : p)))
-        setEditingId(null)
-        setEditData(null)
-        // Limpiar la descripción de este producto
-        const newDescriptions = { ...updateDescriptions }
-        delete newDescriptions[editingId]
-        setUpdateDescriptions(newDescriptions)
-        setError(null)
-        
-        // Redirigir a consultar después de actualizar exitosamente
-        setTimeout(() => {
-          router.push("/dashboard/consultar")
-        }, 500) // Pequeño delay para que el usuario vea el éxito
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Error al actualizar producto"
-      setError(errorMessage)
-      alert(errorMessage)
-    } finally {
-      setSaving(false)
+    if (!error) {
+      setEditingId(null)
+    } else {
+      setWasSaving(false)
     }
   }
 
   const cancelEdit = () => {
     setEditingId(null)
-    setEditData(null)
-    // Limpiar la descripción de este producto
-    if (editingId) {
-      const newDescriptions = { ...updateDescriptions }
-      delete newDescriptions[editingId]
-      setUpdateDescriptions(newDescriptions)
-    }
+    handleCancelEdit()
+  }
+
+  if (isGuest) {
+    return null
   }
 
   if (loading) {
@@ -155,7 +93,7 @@ export default function ActualizarProductos() {
     )
   }
 
-  if (error) {
+  if (error && !editingId) {
     return (
       <div className="p-8">
         <div className="mb-8">
@@ -184,43 +122,43 @@ export default function ActualizarProductos() {
         <div className="grid gap-4">
           {products.map((product, index) => (
             <Card key={product.id || `product-${index}`} className="p-6">
-              {editingId === product.id && editData ? (
+              {editingId === product.id && editFormData ? (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">Nombre</label>
-                    <input
+                    <Input
                       type="text"
-                      value={editData.nombre}
-                      onChange={(e) => setEditData({ ...editData, nombre: e.target.value })}
-                      className="w-full px-4 py-2 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      value={editFormData.nombre}
+                      onChange={(e) => setEditFormData({ ...editFormData, nombre: e.target.value })}
+                      disabled={saving}
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">Marca</label>
-                    <input
+                    <Input
                       type="text"
-                      value={editData.marca}
-                      onChange={(e) => setEditData({ ...editData, marca: e.target.value })}
-                      className="w-full px-4 py-2 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      value={editFormData.marca}
+                      onChange={(e) => setEditFormData({ ...editFormData, marca: e.target.value })}
+                      disabled={saving}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-foreground mb-2">Precio</label>
-                      <input
+                      <Input
                         type="number"
-                        value={editData.precio}
-                        onChange={(e) => setEditData({ ...editData, precio: Number.parseFloat(e.target.value) })}
-                        className="w-full px-4 py-2 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        value={editFormData.precio}
+                        onChange={(e) => setEditFormData({ ...editFormData, precio: Number.parseFloat(e.target.value) })}
+                        disabled={saving}
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-foreground mb-2">Stock</label>
-                      <input
+                      <Input
                         type="number"
-                        value={editData.stock}
-                        onChange={(e) => setEditData({ ...editData, stock: Number.parseInt(e.target.value) })}
-                        className="w-full px-4 py-2 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        value={editFormData.stock}
+                        onChange={(e) => setEditFormData({ ...editFormData, stock: Number.parseInt(e.target.value) })}
+                        disabled={saving}
                       />
                     </div>
                   </div>
@@ -228,28 +166,18 @@ export default function ActualizarProductos() {
                     <label className="block text-sm font-medium text-foreground mb-2">
                       Motivo de actualización <span className="text-destructive">*</span>
                     </label>
-                    <textarea
-                      value={updateDescriptions[product.id] || ""}
+                    <Textarea
+                      value={updateDescription}
                       onChange={(e) => {
-                        setUpdateDescriptions({
-                          ...updateDescriptions,
-                          [product.id]: e.target.value
-                        })
-                        if (error && e.target.value.trim()) {
-                          setError(null)
-                        }
+                        setUpdateDescription(e.target.value)
+                        if (error) setError(null)
                       }}
                       placeholder="Describe por qué estás actualizando este producto... (Obligatorio)"
-                      className={`w-full px-3 py-2 text-sm rounded-lg border bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 resize-none ${
-                        !updateDescriptions[product.id]?.trim() && error 
-                          ? "border-destructive focus:ring-destructive" 
-                          : "border-input focus:ring-primary"
-                      }`}
                       rows={3}
                       disabled={saving}
-                      required
+                      className={!updateDescription.trim() && error ? "border-destructive" : ""}
                     />
-                    {!updateDescriptions[product.id]?.trim() && (
+                    {!updateDescription.trim() && error && (
                       <p className="text-xs text-destructive mt-1">
                         Este campo es obligatorio
                       </p>
@@ -259,11 +187,11 @@ export default function ActualizarProductos() {
                     <Button 
                       onClick={saveEdit} 
                       className="flex-1" 
-                      disabled={saving || !updateDescriptions[product.id]?.trim()}
+                      disabled={saving || !updateDescription.trim()}
                     >
                       {saving ? "Guardando..." : "Guardar"}
                     </Button>
-                    <Button onClick={cancelEdit} variant="outline" className="flex-1 bg-transparent" disabled={saving}>
+                    <Button onClick={cancelEdit} variant="outline" className="flex-1" disabled={saving}>
                       Cancelar
                     </Button>
                   </div>
@@ -275,7 +203,9 @@ export default function ActualizarProductos() {
                       <h3 className="text-xl font-semibold text-foreground">{product.nombre}</h3>
                       <p className="text-sm text-muted-foreground mt-1">Marca: {product.marca}</p>
                     </div>
-                    <span className="text-2xl font-bold text-primary">${typeof product.precio === 'number' ? product.precio.toFixed(2) : Number(product.precio || 0).toFixed(2)}</span>
+                    <span className="text-2xl font-bold text-primary">
+                      ${typeof product.precio === 'number' ? product.precio.toFixed(2) : Number(product.precio || 0).toFixed(2)}
+                    </span>
                   </div>
                   <div className="flex gap-4 mb-4">
                     <div className="bg-muted rounded-lg p-3 flex-1">

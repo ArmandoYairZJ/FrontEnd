@@ -6,97 +6,61 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { apiClient } from "@/lib/api-client"
+import { useProducts } from "@/hooks/use-products"
 import { useAuth } from "@/lib/auth-context"
-
-interface ProductForm {
-  nombre: string
-  precio: string
-  stock: string
-  marca: string
-}
 
 export default function CrearProductos() {
   const router = useRouter()
   const { user } = useAuth()
-  const [formData, setFormData] = useState<ProductForm>({
-    nombre: "",
-    precio: "",
-    stock: "",
-    marca: "",
-  })
-  const [isLoading, setIsLoading] = useState(false)
+  const {
+    createFormData,
+    creating,
+    error,
+    setCreateFormData,
+    setError,
+    handleCreate,
+    handleCancelCreate,
+  } = useProducts()
+  
   const [successMessage, setSuccessMessage] = useState("")
-
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }))
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-
-    try {
-      // Validar que los campos no estén vacíos
-      if (!formData.nombre || !formData.precio || !formData.stock || !formData.marca) {
-        alert("Por favor completa todos los campos")
-        setIsLoading(false)
-        return
-      }
-
-      // Validar que precio y stock sean números
-      if (isNaN(Number(formData.precio)) || isNaN(Number(formData.stock))) {
-        alert("El precio y stock deben ser números")
-        setIsLoading(false)
-        return
-      }
-
-      // Crear producto en el backend
-      const response = await apiClient.createProduct({
-        nombre: formData.nombre,
-        precio: Number(formData.precio),
-        stock: Number(formData.stock),
-        marca: formData.marca,
-      })
-
-      if (response.error) {
-        alert(response.error)
-        setIsLoading(false)
-        return
-      }
-
-      setSuccessMessage("Producto creado exitosamente")
-      setFormData({
-        nombre: "",
-        precio: "",
-        stock: "",
-        marca: "",
-      })
-
-      // Redirigir a consultar después de 2 segundos
-      setTimeout(() => {
-        router.push("/dashboard/consultar")
-      }, 2000)
-    } catch (error) {
-      console.error("Error al crear producto:", error)
-      alert("Error al crear el producto")
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const [wasCreating, setWasCreating] = useState(false)
 
   // Solo USER y ADMIN pueden crear (no invitados)
   const isGuest = user?.role === "guest"
+  
   useEffect(() => {
     if (isGuest) {
       router.push("/dashboard/consultar")
     }
   }, [isGuest, router])
+
+  // Detectar éxito cuando el formulario se limpia después de crear
+  useEffect(() => {
+    if (wasCreating && !creating && !error && !createFormData.nombre && !createFormData.marca) {
+      setSuccessMessage("Producto creado exitosamente")
+      setTimeout(() => {
+        router.push("/dashboard/consultar")
+      }, 2000)
+      setWasCreating(false)
+    }
+  }, [creating, error, createFormData, wasCreating, router])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setCreateFormData({
+      ...createFormData,
+      [name]: value,
+    })
+    setError(null)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSuccessMessage("")
+    setError(null)
+    setWasCreating(true)
+    await handleCreate()
+  }
 
   if (isGuest) {
     return null
@@ -108,6 +72,12 @@ export default function CrearProductos() {
         <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-1 md:mb-2">Crear Nuevo Producto</h2>
         <p className="text-sm md:text-base text-muted-foreground">Agrega un nuevo producto al inventario</p>
       </div>
+
+      {error && (
+        <Card className="mb-6 p-3 md:p-4 bg-destructive/10 border-destructive">
+          <p className="text-xs md:text-base text-destructive">{error}</p>
+        </Card>
+      )}
 
       {successMessage && (
         <Card className="mb-6 p-3 md:p-4 bg-green-50 border-green-200">
@@ -123,10 +93,10 @@ export default function CrearProductos() {
             <Input
               type="text"
               name="nombre"
-              value={formData.nombre}
+              value={createFormData.nombre}
               onChange={handleChange}
               placeholder="Ej: Laptop, Mouse, etc..."
-              disabled={isLoading}
+              disabled={creating}
               className="w-full text-xs md:text-base"
             />
           </div>
@@ -137,10 +107,10 @@ export default function CrearProductos() {
             <Input
               type="text"
               name="marca"
-              value={formData.marca}
+              value={createFormData.marca}
               onChange={handleChange}
               placeholder="Ej: Samsung, Apple, etc..."
-              disabled={isLoading}
+              disabled={creating}
               className="w-full text-xs md:text-base"
             />
           </div>
@@ -151,12 +121,12 @@ export default function CrearProductos() {
               <Input
                 type="number"
                 name="precio"
-                value={formData.precio}
+                value={createFormData.precio}
                 onChange={handleChange}
                 placeholder="0.00"
                 step="0.01"
                 min="0"
-                disabled={isLoading}
+                disabled={creating}
                 className="w-full text-xs md:text-base"
               />
             </div>
@@ -165,11 +135,11 @@ export default function CrearProductos() {
               <Input
                 type="number"
                 name="stock"
-                value={formData.stock}
+                value={createFormData.stock}
                 onChange={handleChange}
                 placeholder="0"
                 min="0"
-                disabled={isLoading}
+                disabled={creating}
                 className="w-full text-xs md:text-base"
               />
             </div>
@@ -177,14 +147,14 @@ export default function CrearProductos() {
 
           {/* Botones */}
           <div className="flex flex-col sm:flex-row gap-2 md:gap-3 pt-2 md:pt-4">
-            <Button type="submit" disabled={isLoading} className="flex-1 text-xs md:text-base">
-              {isLoading ? "Creando..." : "Crear Producto"}
+            <Button type="submit" disabled={creating} className="flex-1 text-xs md:text-base">
+              {creating ? "Creando..." : "Crear Producto"}
             </Button>
             <Button
               type="button"
               variant="outline"
               onClick={() => router.back()}
-              disabled={isLoading}
+              disabled={creating}
               className="flex-1 text-xs md:text-base"
             >
               Cancelar
